@@ -9,6 +9,7 @@
 
 #include <QDomElement>
 #include <QFile>
+#include <QColor>
 
 using namespace Eigen;
 
@@ -84,7 +85,7 @@ void Scene::createDefaultScene(Shader &Program)
     mLightList.push_back(new DirectionalLight(-Vector3f(1,1,1).normalized(), Array3f(0.6,0.6,0.6)));
     mLightList.push_back(new PointLight(Vector3f(2,-5,5), Array3f(0.8,0.8,0.8), 20));
 
-    mLightList.push_back(new AreaLight(Vector3f(-4,2,7), -Vector3f(-4,2,7).normalized(), 0.5, Array3f(1.9,1.9,1.9), 20));
+    mLightList.push_back(new AreaLight(Vector3f(-4,2,7), -Vector3f(-4,2,7).normalized(), 0.5, Array3f(1.9,1.9,1.9), 20, "light_source_color.png"));
 
     // setup the camera
     mCamera.setViewport(512,512);
@@ -217,26 +218,35 @@ Eigen::Array3f Scene::raytrace(const Ray& ray) const
 
         for(int i = 0; i < mLightList.size(); ++i) {
 
-
             if (dynamic_cast<const AreaLight*> (mLightList[i])) {
                 const AreaLight* light = dynamic_cast<const AreaLight*>(mLightList[i]);
 
                 Array3f valueTmp(0,0,0);
 
-                const int lightSize = light->size();
+                const float lightSize = light->size();
 
-                Vector3f dirCurrLight;
+                Vector3f lightDir;
 
-                for (float x = -lightSize / 2.f; x < lightSize / 2.f; x += (float) (lightSize / nbLightWInAL)) {
-                    for (float y = -lightSize / 2.f; y < lightSize / 2.f; y += (float) (lightSize / nbLightHInAL)) {
+		QRgb color;
+
+		float halfLightSize = lightSize / 2.f;
+		float ratioLight = 100.f / lightSize + 12.5f;
+
+		float ratioTexW = light->texture().width() / 100.f;
+		float ratioTexH = light->texture().height() / 100.f;
+
+                for (float x = -halfLightSize; x < halfLightSize; x += (float) (lightSize / nbLightWInAL)) {
+                    for (float y = -halfLightSize; y < halfLightSize; y += (float) (lightSize / nbLightHInAL)) {
 
                         Vector3f pos = light->position() + x * light->uVec() + y * light->vVec();
 
-                        dirCurrLight = (pos - rayHit).normalized();
+                        lightDir = (pos - rayHit).normalized();
 
-                        Ray ray(rayHit + hit.normal() * 1e-4, dirCurrLight);
+                        Ray ray(rayHit + hit.normal() * 1e-4, lightDir);
                         ray.shadowRay = true;
+
                         Hit shadow_hit;
+
                         intersect(ray, shadow_hit);
 
                         dist = (pos - rayHit).norm();
@@ -244,13 +254,26 @@ Eigen::Array3f Scene::raytrace(const Ray& ray) const
                         if(shadow_hit.t() < dist)
                             continue;
 
-                        float cos_term = std::max(0.f, dirCurrLight.dot(hit.normal()));
-                        valueTmp += cos_term * light->intensity(rayHit, pos) * hit.object()->material()->brdf(-ray.direction, dirCurrLight, hit.normal());
-                    }
+			if (!light->texture().isNull()) {
+			
+			  float ratioLightW = (x + halfLightSize) * ratioLight;
+			  float ratioLightH = (y + halfLightSize) * ratioLight;
+		   
+			  color = light->texture().pixel(ratioTexW * ratioLightW, ratioTexH * ratioLightH);
+			  const Array3f colorf (QColor(color).red() / 255.f, QColor(color).green() / 255.f, QColor(color).blue() / 255.f);
+	
+			  float cos_term = std::max(0.f, lightDir.dot(hit.normal()));
+			  valueTmp += cos_term * light->intensity(rayHit, pos) * hit.object()->material()->brdf(-ray.direction, lightDir, hit.normal()) * colorf;
+			}
+			else {
+
+			  float cos_term = std::max(0.f, lightDir.dot(hit.normal()));
+			  valueTmp += cos_term * light->intensity(rayHit, pos) *  hit.object()->material()->brdf(-ray.direction, lightDir, hit.normal());
+			}
+		    }
                 }
 
                 value += valueTmp / (nbLightWInAL * nbLightHInAL);
-                //std::cout << value << std::endl;
             }
             else{
 
@@ -265,7 +288,6 @@ Eigen::Array3f Scene::raytrace(const Ray& ray) const
                 float cos_term = std::max(0.f,lightDir.dot(hit.normal()));
                 value += cos_term * mLightList[i]->intensity(rayHit) * hit.object()->material()->brdf(-ray.direction, lightDir, hit.normal());
             }
-
         }
 
         // reflexions

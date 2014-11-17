@@ -38,6 +38,8 @@ QImage Raytracing::raytraceImage(const Scene &scene)
             // Basic tone mapping, and mapping from 0:1 to 0:255
             color /= (color + 0.25);
             color = 255*Array3f(fmin(color(0),1.f),fmin(color(1),1.f),fmin(color(2),1.f));
+	    
+	    //color = Array3f(255, 0, 0);
 
             img.setPixel(i, j, qRgb(color(0), color(1), color(2)));
         }
